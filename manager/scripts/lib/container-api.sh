@@ -173,6 +173,22 @@ PAYLOAD
     return 0
 }
 
+# Start an existing stopped Worker container
+# Use this to wake up a container that was previously stopped (preserves container config).
+# Different from container_create_worker which creates a new container from scratch.
+container_start_worker() {
+    local worker_name="$1"
+    local container_name="${WORKER_CONTAINER_PREFIX}${worker_name}"
+    local code
+    code=$(_api_code POST "/containers/${container_name}/start")
+    if [ "${code}" = "204" ] || [ "${code}" = "304" ]; then
+        _log "Worker ${container_name} started"
+        return 0
+    fi
+    _log "WARNING: Start returned HTTP ${code}"
+    return 1
+}
+
 # Stop a Worker container
 container_stop_worker() {
     local worker_name="$1"

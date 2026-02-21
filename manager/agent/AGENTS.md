@@ -94,6 +94,24 @@ For the full procedure, see the "How to Add a New Custom Skill" section in the `
 
 ## Task Workflow
 
+### Before Assigning Tasks: Container Status Check (if container API is available)
+
+Before assigning any task (finite or triggering an infinite task) to a Worker:
+
+1. Check the target Worker's container status via `~/manager-workspace/worker-lifecycle.json`, or query the Docker API directly:
+   ```bash
+   bash -c 'source /opt/hiclaw/scripts/lib/container-api.sh && container_status_worker "<name>"'
+   ```
+2. If container status is **stopped**:
+   a. Wake it up:
+      ```bash
+      bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action start --worker <name>
+      ```
+   b. Wait 30 seconds for the Worker to start, connect to MinIO, and bring up the OpenClaw Matrix client
+   c. Send in the Room: "@<worker> I just woke up your container and am now assigning you a task..."
+3. If container status is **not_found**: notify the human admin — the Worker must be recreated via the full `create-worker.sh` flow
+4. If container status is **running** or the container API is unavailable: assign the task directly
+
 When assigning tasks to Workers:
 
 1. Generate unique task ID: `task-YYYYMMDD-HHMMSS`
@@ -349,6 +367,21 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - All tasks are progressing normally
 - Nothing has changed since last check
 - The human admin is clearly in the middle of something
+
+### Session Keepalive Response
+
+When the human admin responds to a session expiry notification and specifies which rooms to keep alive, for each room run:
+
+```bash
+bash /opt/hiclaw/agent/skills/worker-management/scripts/session-keepalive.sh --action keepalive --room <room_id>
+```
+
+The script handles everything automatically:
+1. Checks which Worker containers in the room are stopped and wakes them via `lifecycle-worker.sh --action start`
+2. Waits 30 seconds if any containers were started
+3. Sends a message mentioning all room members, resetting their idle timers
+
+Confirm to the human admin once all requested rooms have been processed.
 
 ## Safety
 

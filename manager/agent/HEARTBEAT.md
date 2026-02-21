@@ -76,7 +76,53 @@ done
 
 ---
 
-### 6. 回复
+### 6. Worker 容器生命周期管理
+
+仅当容器 API 可用时执行（先检查）：
+
+```bash
+bash -c 'source /opt/hiclaw/scripts/lib/container-api.sh && container_api_available && echo available'
+```
+
+若输出 `available`，继续执行以下步骤：
+
+1. 同步状态：
+   ```bash
+   bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action sync-status
+   ```
+
+2. 检测空闲：对每个 Worker，若 state.json 中无其 finite task 且 container_status=running：
+   - 若 idle_since 未设置，设为当前时间
+   - 若 (now - idle_since) > idle_timeout_minutes，执行自动停止：
+     ```bash
+     bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action check-idle
+     ```
+   - 在 Manager 与该 Worker 的 Room 中记录：
+     「Worker <name> 容器已因空闲超时自动暂停。有任务时将自动唤醒。」
+
+3. 若有正在运行 finite task 的 Worker 但其容器状态为 stopped（异常情况），执行启动并告警：
+   ```bash
+   bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action start --worker <name>
+   ```
+
+---
+
+### 7. Matrix 会话过期检查（每日一次）
+
+```bash
+bash /opt/hiclaw/agent/skills/worker-management/scripts/session-keepalive.sh --action scan
+```
+
+- 若输出 `SCAN_RESULT: skipped`：跳过（距上次扫描不足 23 小时）
+- 若输出 `SCAN_RESULT: all_ok`：无需处理
+- 若输出包含 `NEAR_EXPIRY_ROOM:` 行：在与 Human Admin 的 DM 中通知（每行格式为 `room_id\ttype\tname\tidle`）：
+  「以下 Matrix 房间的消息将在约 1 天内因空闲过期（7 天空闲限制）：
+  - [worker/project] <name>（<room_id>，已空闲 Xh）
+  如需保留消息，请回复需要保活的房间名称或 room_id，我将向对应房间发送消息。」
+
+---
+
+### 8. 回复
 
 - 如果所有 Worker 正常且无待处理事项：HEARTBEAT_OK
 - 否则：汇总发现和建议的操作，通知人类管理员

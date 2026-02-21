@@ -129,6 +129,69 @@ curl -s "http://127.0.0.1:6167/_matrix/client/v3/rooms/<ROOM_ID>/messages?dir=b&
   -H "Authorization: Bearer <MANAGER_TOKEN>" | jq '.chunk[].content.body'
 ```
 
+## Worker Lifecycle Management
+
+The Manager automatically detects idle Workers during Heartbeat and stops their containers; when assigning tasks it automatically wakes up stopped containers. All state is persisted in `~/manager-workspace/worker-lifecycle.json` (local only, never synced to MinIO).
+
+### worker-lifecycle.json Structure
+
+```json
+{
+  "version": 1,
+  "idle_timeout_minutes": 30,
+  "updated_at": "2026-02-21T10:00:00Z",
+  "workers": {
+    "alice": {
+      "container_status": "stopped",
+      "idle_since": "2026-02-21T10:00:00Z",
+      "auto_stopped_at": "2026-02-21T10:31:00Z",
+      "last_started_at": "2026-02-21T08:00:00Z"
+    }
+  }
+}
+```
+
+Fields:
+- `container_status`: actual status synced from the Docker API (`running` / `stopped` / `not_found` / `remote`)
+- `idle_since`: timestamp when the Worker last had no active finite tasks; set to null when a finite task is active
+- `auto_stopped_at`: when the Manager auto-stopped the container (audit trail)
+- `last_started_at`: when the Manager last started/woke the container
+
+`container_status = "remote"` means the Worker is remotely deployed (no container API access) and is excluded from automatic lifecycle management.
+
+### Manual Commands
+
+```bash
+# Sync all Worker container statuses into the lifecycle file
+bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action sync-status
+
+# Check for idle Workers and auto-stop those that have exceeded the timeout
+bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action check-idle
+
+# Manually stop a Worker container
+bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action stop --worker <name>
+
+# Manually wake up (start) a stopped Worker container
+bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action start --worker <name>
+```
+
+### Changing the Idle Timeout
+
+Edit `~/manager-workspace/worker-lifecycle.json` directly and update the `idle_timeout_minutes` field (default: 30):
+
+```bash
+# Example: change to 60 minutes
+jq '.idle_timeout_minutes = 60' ~/manager-workspace/worker-lifecycle.json > /tmp/lc.json && mv /tmp/lc.json ~/manager-workspace/worker-lifecycle.json
+```
+
+### start vs create
+
+| Situation | Command | Notes |
+|-----------|---------|-------|
+| Container is stopped | `lifecycle-worker.sh --action start` | Restarts the existing container, preserving all config and mounts |
+| Container does not exist (`not_found`) | `create-worker.sh` | Rebuilds from image; full registration flow required |
+| Worker needs reset or config update | `create-worker.sh` (removes old container first) | Full rebuild; Matrix account is reused |
+
 ## Reset a Worker
 
 1. Revoke the Worker's Higress Consumer (or update credentials)
