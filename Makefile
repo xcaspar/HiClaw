@@ -263,10 +263,28 @@ uninstall: ## Stop and remove Manager + all Worker containers
 	done
 	-docker volume rm hiclaw-data 2>/dev/null
 	@if [ -f ./hiclaw-manager.env ]; then \
-		DATA_DIR=$$(grep '^HICLAW_DATA_DIR=' ./hiclaw-manager.env 2>/dev/null | cut -d= -f2); \
+		DATA_DIR=$$(grep '^HICLAW_DATA_DIR=' ./hiclaw-manager.env 2>/dev/null | cut -d= -f2-); \
 		if [ -n "$$DATA_DIR" ] && [ -d "$$DATA_DIR" ]; then \
 			echo "  External data directory preserved: $$DATA_DIR"; \
 			echo "  To delete: rm -rf $$DATA_DIR"; \
+		fi; \
+		WORKSPACE_DIR=$$(grep '^HICLAW_WORKSPACE_DIR=' ./hiclaw-manager.env 2>/dev/null | cut -d= -f2-); \
+		if [ -n "$$WORKSPACE_DIR" ] && [ -d "$$WORKSPACE_DIR" ]; then \
+			if [ -t 0 ]; then \
+				printf "  Remove manager workspace '%s'? [y/N] " "$$WORKSPACE_DIR"; \
+				read REPLY; \
+				if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
+					PARENT=$$(dirname "$$WORKSPACE_DIR"); \
+					BASE=$$(basename "$$WORKSPACE_DIR"); \
+					docker run --rm --entrypoint sh -v "$$PARENT:/host-parent" $(LOCAL_MANAGER) -c "rm -rf /host-parent/$$BASE"; \
+					echo "  Removed: $$WORKSPACE_DIR"; \
+				else \
+					echo "  Manager workspace preserved: $$WORKSPACE_DIR"; \
+				fi; \
+			else \
+				echo "  Manager workspace preserved: $$WORKSPACE_DIR"; \
+				echo "  To delete: rm -rf $$WORKSPACE_DIR"; \
+			fi; \
 		fi; \
 	fi
 	-rm -f ./hiclaw-manager.env
