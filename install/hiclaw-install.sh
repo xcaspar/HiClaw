@@ -221,6 +221,13 @@ create_openai_compat_provider() {
 
 send_welcome_message() {
     local container="hiclaw-manager"
+
+    # Skip if Manager has already completed soul configuration
+    if docker exec "${container}" test -f /root/manager-workspace/soul-configured 2>/dev/null; then
+        log "Soul already configured (soul-configured marker found), skipping onboarding message"
+        return 0
+    fi
+
     local admin_user="${HICLAW_ADMIN_USER:-admin}"
     local admin_password="${HICLAW_ADMIN_PASSWORD}"
     local matrix_domain="${HICLAW_MATRIX_DOMAIN}"
@@ -314,6 +321,7 @@ Please begin the onboarding conversation:
    d. Confirm the default language they want you to use
 5. After they reply, write their preferences to the \"Identity & Personality\" section of ~/SOUL.md — replace the \"(not yet configured)\" placeholder with the configured identity
 6. Confirm what you wrote, and ask if they would like to adjust anything
+7. Once the admin confirms the identity is set, run: touch ~/soul-configured
 
 The human admin will start chatting shortly."
 
@@ -430,8 +438,6 @@ install_manager() {
     log "Registry: ${HICLAW_REGISTRY}"
     log ""
 
-    local first_install=true
-
     # Onboarding mode selection (skip if already in non-interactive mode)
     if [ "${HICLAW_NON_INTERACTIVE}" != "1" ]; then
         log "--- Onboarding Mode ---"
@@ -497,7 +503,6 @@ install_manager() {
         case "${UPGRADE_CHOICE}" in
             1|upgrade)
                 log "Performing in-place upgrade..."
-                first_install=false
                 
                 # Warn about running containers
                 if [ -n "${running_manager}" ] || [ -n "${running_workers}" ]; then
@@ -936,10 +941,8 @@ EOF
         create_openai_compat_provider
     fi
 
-    # Send welcome message to Manager (first install / clean reinstall only)
-    if [ "${first_install}" = "true" ]; then
-        send_welcome_message
-    fi
+    # Send welcome message to Manager (skipped automatically if soul-configured marker exists)
+    send_welcome_message
 
     log ""
     log "=== HiClaw Manager Started! ==="
