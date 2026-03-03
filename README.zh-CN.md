@@ -53,6 +53,8 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; Invoke-Expression ((New-Object
 
 **前置条件**：Docker Desktop（Windows/macOS）或 Docker Engine（Linux）。仅此而已。
 
+**资源需求**：Docker 虚拟机至少需要分配 2 核 CPU 和 4 GB 内存。Docker Desktop 用户可在 Settings → Resources 中调整。
+
 ### 非交互式安装
 
 ```bash
