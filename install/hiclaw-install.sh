@@ -323,8 +323,8 @@ msg() {
         "port.local_only.selected_external.en") text="Ports bound to all interfaces (0.0.0.0)" ;;
         "port.local_only.https_hint.zh") text="⚠️  建议在 Higress 控制台配置 TLS 证书并启用 HTTPS，避免明文传输。" ;;
         "port.local_only.https_hint.en") text="⚠️  It is recommended to configure TLS certificates and enable HTTPS in the Higress Console to avoid plaintext transmission." ;;
-        "port.local_only.https_docs.zh") text="   参考文档: https://higress.ai/docs/latest/user/https/" ;;
-        "port.local_only.https_docs.en") text="   Docs: https://higress.ai/docs/latest/user/https/" ;;
+        "port.local_only.https_docs.zh") text="" ;;
+        "port.local_only.https_docs.en") text="" ;;
         # --- Domain Configuration ---
         "domain.title.zh") text="--- 域名配置（按回车使用默认值）---" ;;
         "domain.title.en") text="--- Domain Configuration (press Enter for defaults) ---" ;;
@@ -1335,9 +1335,7 @@ install_manager() {
         log "$(msg port.local_only.selected_external)"
         echo ""
         echo -e "\033[33m$(msg port.local_only.https_hint)\033[0m"
-        echo -e "\033[33m$(msg port.local_only.https_docs)\033[0m"
     fi
-    log ""
 
     log "$(msg port.title)"
     prompt HICLAW_PORT_GATEWAY "$(msg port.gateway_prompt)" "18080"
@@ -1659,7 +1657,6 @@ EOF
     log ""
     if [ "${HICLAW_LOCAL_ONLY:-1}" != "1" ]; then
         echo -e "\033[33m$(msg port.local_only.https_hint)\033[0m"
-        echo -e "\033[33m$(msg port.local_only.https_docs)\033[0m"
         log ""
     fi
     log "$(msg success.config_file "${ENV_FILE}")"

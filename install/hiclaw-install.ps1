@@ -264,7 +264,7 @@ $script:Messages = @{
     "port.local_only.selected_local" = @{ zh = "端口已绑定到 127.0.0.1（仅本机访问）"; en = "Ports bound to 127.0.0.1 (localhost only)" }
     "port.local_only.selected_external" = @{ zh = "端口已绑定到所有网络接口（0.0.0.0）"; en = "Ports bound to all interfaces (0.0.0.0)" }
     "port.local_only.https_hint" = @{ zh = "⚠️  建议在 Higress 控制台配置 TLS 证书并启用 HTTPS，避免明文传输。"; en = "⚠️  It is recommended to configure TLS certificates and enable HTTPS in the Higress Console to avoid plaintext transmission." }
-    "port.local_only.https_docs" = @{ zh = "   参考文档: https://higress.ai/docs/latest/user/https/"; en = "   Docs: https://higress.ai/docs/latest/user/https/" }
+    "port.local_only.https_docs" = @{ zh = ""; en = "" }
 
     # --- Domain Configuration ---
     "domain.title" = @{ zh = "--- 域名配置（按回车使用默认值）---"; en = "--- Domain Configuration (press Enter for defaults) ---" }
@@ -1329,7 +1329,6 @@ function Install-Manager {
         Write-Log (Get-Msg "port.local_only.selected_external")
         Write-Host ""
         Write-Host (Get-Msg "port.local_only.https_hint") -ForegroundColor Yellow
-        Write-Host (Get-Msg "port.local_only.https_docs") -ForegroundColor Yellow
     }
     Write-Log ""
 
@@ -1608,7 +1607,6 @@ function Install-Manager {
     Write-Log ""
     if ($config.LOCAL_ONLY -ne "1") {
         Write-Host (Get-Msg "port.local_only.https_hint") -ForegroundColor Yellow
-        Write-Host (Get-Msg "port.local_only.https_docs") -ForegroundColor Yellow
         Write-Log ""
     }
     Write-Log (Get-Msg "success.config_file" -f $script:HICLAW_ENV_FILE)
