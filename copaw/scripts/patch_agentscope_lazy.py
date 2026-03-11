@@ -346,7 +346,81 @@ def patch(site: Path) -> None:
 
     toolkit.write_text(src)
 
-    print("agentscope patched — lazy memory/session/agent/mcp/hooks")
+    # ------------------------------------------------------------------ #
+    # 8) Lazy-import numpy in _agent_base.py, _utils/_common.py,
+    #    embedding/_file_cache.py
+    # ------------------------------------------------------------------ #
+    for relpath in [
+        "agent/_agent_base.py",
+        "_utils/_common.py",
+    ]:
+        fp = site / relpath
+        src = fp.read_text()
+        if "import numpy as np\n" in src:
+            src = src.replace("import numpy as np\n", "", 1)
+            lines = src.split("\n")
+            new_lines = []
+            added = False
+            for line in lines:
+                stripped = line.lstrip()
+                if (not added and "np." in stripped
+                        and not stripped.startswith("#")
+                        and not stripped.startswith('"')
+                        and not stripped.startswith("'")):
+                    indent = len(line) - len(stripped)
+                    new_lines.append(" " * indent + "import numpy as np")
+                    added = True
+                new_lines.append(line)
+            fp.write_text("\n".join(new_lines))
+
+    # embedding/_file_cache.py — move numpy into method bodies
+    fc = site / "embedding/_file_cache.py"
+    src = fc.read_text()
+    if "\nimport numpy as np\n" in src:
+        src = src.replace("import numpy as np\n", "", 1)
+        lines = src.split("\n")
+        new_lines = []
+        for line in lines:
+            stripped = line.lstrip()
+            if "np." in stripped and "import numpy" not in stripped:
+                indent = len(line) - len(stripped)
+                new_lines.append(" " * indent + "import numpy as np")
+            new_lines.append(line)
+        fc.write_text("\n".join(new_lines))
+
+    # ------------------------------------------------------------------ #
+    # 9) tracing/_trace.py + _extractor.py — defer embedding import
+    #    (prevents numpy load via embedding._file_cache)
+    # ------------------------------------------------------------------ #
+    for relpath in ["tracing/_trace.py", "tracing/_extractor.py"]:
+        fp = site / relpath
+        src = fp.read_text()
+        if "from ..embedding import " in src and "TYPE_CHECKING" in src:
+            # Move runtime embedding import under TYPE_CHECKING
+            lines = src.split("\n")
+            new_lines = []
+            for line in lines:
+                if (line.startswith("from ..embedding import ")
+                        and "TYPE_CHECKING" not in line):
+                    continue
+                if line.strip() == "if TYPE_CHECKING:":
+                    new_lines.append(line)
+                    new_lines.append("    from ..embedding import EmbeddingModelBase, EmbeddingResponse")
+                    continue
+                new_lines.append(line)
+            fp.write_text("\n".join(new_lines))
+        elif "from ..embedding import " in src:
+            src = src.replace(
+                "from ..embedding import EmbeddingModelBase, EmbeddingResponse\n",
+                "",
+            )
+            src = src.replace(
+                "from ..embedding import EmbeddingModelBase\n",
+                "",
+            )
+            fp.write_text(src)
+
+    print("agentscope patched — lazy memory/session/agent/mcp/hooks/numpy")
 
 
 if __name__ == "__main__":

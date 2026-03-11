@@ -178,13 +178,12 @@ def patch(site: Path) -> None:
     )
 
     # ------------------------------------------------------------------ #
-    # 5) core/op/__init__.py — lazy-load MCPTool (pulls in mcp package)
+    # 5) core/op/__init__.py — lazy-load MCPTool + BaseRayOp (pandas)
     # ------------------------------------------------------------------ #
     (site / "core/op/__init__.py").write_text(
         textwrap.dedent("""\
             import importlib
             from .base_op import BaseOp
-            from .base_ray_op import BaseRayOp
             from .base_react import BaseReact
             from .base_react_stream import BaseReactStream
             from .base_tool import BaseTool
@@ -197,14 +196,158 @@ def patch(site: Path) -> None:
                 "BaseTool", "MCPTool", "ParallelOp", "SequentialOp",
             ]
 
+            _LAZY = {
+                "MCPTool": ".mcp_tool",
+                "BaseRayOp": ".base_ray_op",
+            }
+
             def __getattr__(name):
-                if name == "MCPTool":
-                    from .mcp_tool import MCPTool
-                    globals()["MCPTool"] = MCPTool
-                    return MCPTool
+                if name in _LAZY:
+                    mod = importlib.import_module(_LAZY[name], __package__)
+                    cls = getattr(mod, name)
+                    globals()[name] = cls
+                    return cls
                 raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
         """)
     )
+
+    # ------------------------------------------------------------------ #
+    # 5b) core/op/base_op.py — lazy-load CacheHandler (pulls pandas)
+    # ------------------------------------------------------------------ #
+    bop = site / "core/op/base_op.py"
+    src = bop.read_text()
+    if "CacheHandler" in src and "from ..utils import camel_to_snake, CacheHandler" in src:
+        src = src.replace(
+            "from ..utils import camel_to_snake, CacheHandler, timer",
+            "from ..utils import camel_to_snake, timer",
+        )
+        src = src.replace(
+            "self._cache: CacheHandler | None = None",
+            'self._cache: "CacheHandler" | None = None',
+        )
+        src = src.replace(
+            "def cache(self) -> CacheHandler:",
+            'def cache(self) -> "CacheHandler":',
+        )
+        src = src.replace(
+            "            self._cache = CacheHandler(",
+            "            from ..utils import CacheHandler\n"
+            "            self._cache = CacheHandler(",
+        )
+        bop.write_text(src)
+
+    # ------------------------------------------------------------------ #
+    # 5c) core/flow/base_flow.py — lazy-load CacheHandler (pulls pandas)
+    # ------------------------------------------------------------------ #
+    bf = site / "core/flow/base_flow.py"
+    src = bf.read_text()
+    if "from ..utils import camel_to_snake, CacheHandler" in src:
+        src = src.replace(
+            "from ..utils import camel_to_snake, CacheHandler",
+            "from ..utils import camel_to_snake",
+        )
+        src = src.replace(
+            "self._cache: CacheHandler | None = None",
+            'self._cache: "CacheHandler" | None = None',
+        )
+        src = src.replace(
+            "def cache(self) -> CacheHandler:",
+            'def cache(self) -> "CacheHandler":',
+        )
+        src = src.replace(
+            "            self._cache = CacheHandler(",
+            "            from ..utils import CacheHandler\n"
+            "            self._cache = CacheHandler(",
+        )
+        bf.write_text(src)
+
+    # ------------------------------------------------------------------ #
+    # 5d) core/utils/cache_handler.py — lazy-import pandas
+    # ------------------------------------------------------------------ #
+    ch = site / "core/utils/cache_handler.py"
+    src = ch.read_text()
+    if "\nimport pandas as pd\n" in src:
+        src = src.replace("import pandas as pd\n", "", 1)
+        src = src.replace(
+            """    _EXTENSIONS = {
+        pd.DataFrame: ".csv",
+        dict: ".json",
+        list: ".jsonl",
+        str: ".txt",
+    }
+
+    _TYPE_NAMES = {
+        "DataFrame": pd.DataFrame,
+        "dict": dict,
+        "list": list,
+        "str": str,
+    }""",
+            """    @staticmethod
+    def _get_extensions():
+        import pandas as pd
+        return {
+            pd.DataFrame: ".csv",
+            dict: ".json",
+            list: ".jsonl",
+            str: ".txt",
+        }
+
+    @staticmethod
+    def _get_type_names():
+        import pandas as pd
+        return {
+            "DataFrame": pd.DataFrame,
+            "dict": dict,
+            "list": list,
+            "str": str,
+        }""",
+        )
+        src = src.replace("self._EXTENSIONS", "self._get_extensions()")
+        src = src.replace("self._TYPE_NAMES", "self._get_type_names()")
+        for old, new in [
+            ("if dtype is pd.DataFrame:", "import pandas as pd\n        if dtype is pd.DataFrame:"),
+            ("return pd.read_csv(", "import pandas as pd\n            return pd.read_csv("),
+        ]:
+            src = src.replace(old, new, 1)
+        ch.write_text(src)
+
+    # ------------------------------------------------------------------ #
+    # 5e) Lazy-import numpy everywhere in reme
+    # ------------------------------------------------------------------ #
+    numpy_files = [
+        "core/utils/common_utils.py",
+        "core/file_store/local_file_store.py",
+        "core/vector_store/local_vector_store.py",
+        "memory/tools/record/memory_handler.py",
+    ]
+    for relpath in numpy_files:
+        fp = site / relpath
+        if not fp.exists():
+            continue
+        src = fp.read_text()
+        if "import numpy as np\n" not in src:
+            continue
+        src = src.replace("import numpy as np\n", "", 1)
+        # Fix type annotations referencing np.ndarray
+        src = src.replace(
+            "nd_array1: np.ndarray, nd_array2: np.ndarray) -> np.ndarray:",
+            "nd_array1, nd_array2):",
+        )
+        # Add lazy import before first np. usage
+        lines = src.split("\n")
+        new_lines = []
+        added = False
+        for line in lines:
+            stripped = line.lstrip()
+            if (not added and "np." in stripped
+                    and not stripped.startswith("#")
+                    and not stripped.startswith('"')
+                    and not stripped.startswith("'")):
+                indent = len(line) - len(stripped)
+                new_lines.append(" " * indent + "import numpy as np")
+                added = True
+            new_lines.append(line)
+        fp.write_text("\n".join(new_lines))
 
     # ------------------------------------------------------------------ #
     # 6) core/service/__init__.py — lazy-load MCPService

@@ -28,7 +28,7 @@ FROM python:3.11-slim
 ARG APT_MIRROR=mirrors.aliyun.com
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ARG LITE_COPAW_REPO=https://github.com/johnlanni/CoPaw
-ARG LITE_COPAW_COMMIT=fd0ed1eb8b82c1a217532e072e5afdb32c62577c
+ARG LITE_COPAW_COMMIT=212405a30380bc319b02397c166d5296029c89b8
 
 # python:3.11-slim is Debian-based, uses /etc/apt/sources.list.d/debian.sources
 RUN if [ -n "${APT_MIRROR}" ]; then \
