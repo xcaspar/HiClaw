@@ -224,80 +224,6 @@ docker run --rm -v hiclaw-data:/data -v $(pwd):/backup ubuntu \
   tar xzf /backup/hiclaw-backup-YYYYMMDD.tar.gz -C /
 ```
 
-## 编码 CLI 委托
-
-编码 CLI 委托让 Worker 可以将编码任务（编写代码、修复 Bug、实现功能）委托给运行在 Manager 容器内的完整编码 CLI 工具——Claude Code、Gemini CLI 或 qodercli。这让 Worker 能够访问超越单次 LLM 调用的更丰富、多步骤的代码生成能力。
-
-### 工作原理
-
-当 Manager 分配编码任务时，它会检查 `~/coding-cli-config.json`：
-
-- **配置文件不存在**：自动运行首次检测（见下文）
-- **`enabled: false`**：标准任务分配，不委托
-- **`enabled: true`**：在任务的 `spec.md` 中追加 `## Coding CLI Mode` 章节，指示 Worker 使用 `coding-request:`/`coding-result:` 协议
-
-**首次检测**运行检测脚本，并自动选择工具（YOLO 模式）或询问管理员：
-
-```bash
-# 在第一个编码任务时自动运行；或手动触发：
-docker exec hiclaw-manager \
-  bash /opt/hiclaw/agent/skills-alpha/coding-cli-management/scripts/detect-available-cli.sh
-```
-
-### 内置 CLI 工具
-
-Manager 镜像预装了以下工具：
-
-| 工具 | 命令 | 说明 |
-|------|------|------|
-| Claude Code | `claude` | Anthropic 的 CLI，需要 `ANTHROPIC_API_KEY` 或 `claude auth login` |
-| Gemini CLI | `gemini` | Google 的 CLI，需要 `GEMINI_API_KEY` 或 `gemini auth login` |
-| qodercli | `qodercli` | 可选；构建时尽力安装 |
-
-### 配置文件
-
-`~/coding-cli-config.json`：
-
-```json
-{
-  "enabled": true,
-  "cli": "claude",
-  "detected_at": "2026-02-24T10:00:00+08:00"
-}
-```
-
-启用后如需禁用委托，编辑此文件将 `"enabled"` 设为 `false`，或删除文件以在下次编码任务时重新运行检测。
-
-### coding-request: / coding-result: 协议
-
-编码 CLI 委托激活时，Worker 使用结构化消息协议与 Manager 通信：
-
-**Worker → Manager**（`coding-request:`）：
-```
-coding-request: task-20260224-120000
-
----PROMPT---
-实现 POST /api/users REST 端点，验证输入并插入数据库。
-现有代码库见 ~/hiclaw-fs/shared/tasks/task-20260224-120000/workspace/。
----END---
-```
-
-**Manager → Worker** 成功时（`coding-result:`）：
-```
-coding-result: task-20260224-120000
-
-实现已完成。变更已推送到 MinIO。
-工作空间：~/hiclaw-fs/shared/tasks/task-20260224-120000/workspace/
-```
-
-**Manager → Worker** 失败时（`coding-failed:`）：
-```
-coding-failed: task-20260224-120000
-
-CLI 以错误退出。提示词已保存至：
-~/hiclaw-fs/shared/tasks/task-20260224-120000/coding-prompts/20260224-120005.txt
-```
-
 ## YOLO 模式
 
 YOLO 模式让 Manager 完全自主运行——跳过所有交互式管理员提示，自行做出合理决策。适用于 CI/测试和自动化工作流。
@@ -320,8 +246,6 @@ docker exec hiclaw-manager touch /root/manager-workspace/yolo-mode
 
 | 场景 | 普通模式 | YOLO 模式 |
 |------|----------|-----------|
-| 编码 CLI 首次检测：找到工具 | 询问管理员选择哪个工具 | 自动选择第一个可用工具（claude > gemini > qodercli） |
-| 编码 CLI 首次检测：未找到工具 | 询问管理员 | 写入 `{"enabled":false}`，正常继续 |
 | 需要 GitHub PAT 但未配置 | 询问管理员 | 跳过 GitHub 集成，注明"GitHub 未配置" |
 | 其他需要确认的决策 | 提示管理员 | 做出最合理的选择，在消息中说明 |
 

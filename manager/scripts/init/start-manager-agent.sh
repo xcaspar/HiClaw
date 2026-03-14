@@ -431,11 +431,8 @@ export OPENCLAW_CONFIG_PATH="/root/manager-workspace/openclaw.json"
 mkdir -p "${HOME}/.openclaw"
 ln -sf "/root/manager-workspace/openclaw.json" "${HOME}/.openclaw/openclaw.json"
 
-# Ensure host credential symlinks exist under HOME so agent CLIs find them
+# Ensure host credential symlinks exist under HOME
 if [ -d "/host-share" ]; then
-    for config_dir in .claude .gemini .qoder; do
-        [ -d "/host-share/${config_dir}" ] && ln -sfn "/host-share/${config_dir}" "${HOME}/${config_dir}"
-    done
     [ -f "/host-share/.gitconfig" ] && ln -sf "/host-share/.gitconfig" "${HOME}/.gitconfig"
 fi
 

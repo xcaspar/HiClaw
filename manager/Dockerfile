@@ -2,7 +2,7 @@
 # HiClaw Manager Agent - All-in-One Container
 # ============================================================
 # Based on openclaw-base (which includes all-in-one + Node.js + OpenClaw)
-# and layers on Tuwunel, MinIO, Element Web, and AI CLI tools.
+# and layers on Tuwunel, MinIO, and Element Web.
 #
 # Build args:
 #   HIGRESS_REGISTRY  - base image registry (default: cn-hangzhou)
@@ -44,15 +44,6 @@ COPY --from=mc /usr/bin/mc /usr/local/bin/mc
 
 # Element Web static files
 COPY --from=element-web /app /opt/element-web
-
-# ---- Install AI coding CLI tools (Manager-only) ----
-RUN npm install -g @google/gemini-cli @anthropic-ai/claude-code
-
-# gemini: symlink to dist/index.js so relative ESM imports resolve correctly
-RUN ln -sf /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js /usr/local/bin/gemini
-
-# qodercli via official install script (best-effort; failure does not block build)
-RUN curl -fsSL https://qoder.com/install.sh | bash || true
 
 # Ensure openclaw binary is on PATH and config is found
 ENV PATH="/opt/openclaw/packages/clawdbot/node_modules/.bin:${PATH}"
