@@ -414,6 +414,11 @@ case "${MODEL_NAME}" in
 esac
 export MODEL_REASONING=true
 
+# Override with user-supplied custom model parameters from env (set during install)
+[ -n "${HICLAW_MODEL_CONTEXT_WINDOW:-}" ] && export MODEL_CONTEXT_WINDOW="${HICLAW_MODEL_CONTEXT_WINDOW}"
+[ -n "${HICLAW_MODEL_MAX_TOKENS:-}" ] && export MODEL_MAX_TOKENS="${HICLAW_MODEL_MAX_TOKENS}"
+[ -n "${HICLAW_MODEL_REASONING:-}" ] && export MODEL_REASONING="${HICLAW_MODEL_REASONING}"
+
 # E2EE: convert HICLAW_MATRIX_E2EE to JSON boolean for template substitution
 if [ "${HICLAW_MATRIX_E2EE:-0}" = "1" ] || [ "${HICLAW_MATRIX_E2EE:-}" = "true" ]; then
     export MATRIX_E2EE_ENABLED=true
@@ -429,6 +434,12 @@ case "${MODEL_NAME}" in
     *)
         export MODEL_INPUT='["text"]' ;;
 esac
+# Override with user-supplied vision setting from env
+if [ "${HICLAW_MODEL_VISION:-}" = "true" ]; then
+    export MODEL_INPUT='["text", "image"]'
+elif [ "${HICLAW_MODEL_VISION:-}" = "false" ]; then
+    export MODEL_INPUT='["text"]'
+fi
 
 log "Model: ${MODEL_NAME} (context=${MODEL_CONTEXT_WINDOW}, maxTokens=${MODEL_MAX_TOKENS}, reasoning=${MODEL_REASONING}, input=${MODEL_INPUT})"
 
@@ -442,12 +453,20 @@ if [ -f /root/manager-workspace/openclaw.json ]; then
        --arg model "${MODEL_NAME}" \
        --argjson e2ee "${MATRIX_E2EE_ENABLED}" \
        --argjson known_models "${KNOWN_MODELS}" \
+       --argjson ctx "${MODEL_CONTEXT_WINDOW}" \
+       --argjson max "${MODEL_MAX_TOKENS}" \
+       --argjson reasoning "${MODEL_REASONING}" \
+       --argjson input "${MODEL_INPUT}" \
        '
         # Merge known models: add any model id not already present
         .models.providers["hiclaw-gateway"].models as $existing
         | ($existing | map(.id)) as $existing_ids
         | ($known_models | map(select(.id as $id | $existing_ids | index($id) | not))) as $new
         | .models.providers["hiclaw-gateway"].models = ($existing + $new)
+        # Ensure the user-chosen default model is in the list (custom model support)
+        | if (.models.providers["hiclaw-gateway"].models | map(.id) | index($model) | not) then
+            .models.providers["hiclaw-gateway"].models += [{"id": $model, "name": $model, "reasoning": $reasoning, "contextWindow": $ctx, "maxTokens": $max, "input": $input}]
+          else . end
         # Rebuild model aliases from the full models list
         | (.models.providers["hiclaw-gateway"].models | map({ ("hiclaw-gateway/" + .id): { "alias": .id } }) | add // {}) as $aliases
         | .agents.defaults.models = ((.agents.defaults.models // {}) + $aliases)
@@ -469,6 +488,20 @@ if [ -f /root/manager-workspace/openclaw.json ]; then
 else
     log "Manager openclaw.json not found, generating from template..."
     envsubst < /opt/hiclaw/configs/manager-openclaw.json.tmpl > /root/manager-workspace/openclaw.json
+    # Inject custom model if not in the built-in list
+    if ! jq -e --arg model "${MODEL_NAME}" '.models.providers["hiclaw-gateway"].models | map(.id) | index($model)' /root/manager-workspace/openclaw.json > /dev/null 2>&1; then
+        log "Custom model '${MODEL_NAME}' not in built-in list, injecting into config..."
+        jq --arg model "${MODEL_NAME}" \
+           --argjson ctx "${MODEL_CONTEXT_WINDOW}" \
+           --argjson max "${MODEL_MAX_TOKENS}" \
+           --argjson reasoning "${MODEL_REASONING}" \
+           --argjson input "${MODEL_INPUT}" \
+           '
+            .models.providers["hiclaw-gateway"].models += [{"id": $model, "name": $model, "reasoning": $reasoning, "contextWindow": $ctx, "maxTokens": $max, "input": $input}]
+            | .agents.defaults.models += {("hiclaw-gateway/" + $model): {"alias": $model}}
+           ' /root/manager-workspace/openclaw.json > /tmp/openclaw.json.tmp && \
+            mv /tmp/openclaw.json.tmp /root/manager-workspace/openclaw.json
+    fi
     _written_token=$(jq -r '.channels.matrix.accessToken' /root/manager-workspace/openclaw.json 2>/dev/null)
     log "Matrix token written from template (prefix: ${_written_token:0:10}...)"
 fi
